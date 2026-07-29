@@ -36,16 +36,6 @@ Before reviewing, gather:
 
 If `sql_security_review_context` is available, prefer it because it includes scanner results, relevant diff, and file contents in one payload.
 
-## Project-specific non-goals
-
-These are intentionally out of scope unless the current change modifies them or exposes them to user-controlled input:
-
-- `SQLBuilder` `_sql` passthrough;
-- `_raw_subqueries` handling;
-- patient cache key based on globally unique project name.
-
-Do not block a task only because one of these pre-existing deferred risks exists unchanged.
-
 ## Review checklist
 
 ### 1. Parameterized values
@@ -209,7 +199,6 @@ Do not mark the task complete while the review is KO.
 
 - Review the diff first, then the full file context.
 - Distinguish changed code from pre-existing unchanged risks.
-- Do not report deferred project-specific non-goals unless the current change makes them worse.
 - Prefer precise findings over generic warnings.
 - If scanner output is noisy, inspect the actual code before deciding.
 - If evidence is insufficient, say what is missing and avoid false certainty.

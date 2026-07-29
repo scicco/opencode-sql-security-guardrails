@@ -63,6 +63,44 @@ describe("scanSqlFiles", () => {
     expect(results).toEqual([])
   })
 
+  it("respects recursive ignoredPaths from project config", async () => {
+    const root = createGitRepo()
+
+    writeProjectFile(
+      root,
+      ".sql-security-guardrails.json",
+      JSON.stringify(
+        {
+          ignoredPaths: ["frontend/**", "tests/**", "playwright/**"]
+        },
+        null,
+        2
+      )
+    )
+
+    writeProjectFile(
+      root,
+      "frontend/src/components/UnsafeComponent.js",
+      "db.query(`SELECT * FROM users WHERE id = ${userId}`)\n"
+    )
+
+    writeProjectFile(
+      root,
+      "tests/backend/unit/unsafe.test.js",
+      "db.query(`SELECT * FROM users WHERE id = ${userId}`)\n"
+    )
+
+    writeProjectFile(
+      root,
+      "playwright/tests/unsafe.spec.js",
+      "db.query(`SELECT * FROM users WHERE id = ${userId}`)\n"
+    )
+
+    const results = await scanSqlFiles("changed", root)
+
+    expect(results).toEqual([])
+  })
+
   it("detects extra query call patterns from project config", async () => {
     const root = createGitRepo()
 

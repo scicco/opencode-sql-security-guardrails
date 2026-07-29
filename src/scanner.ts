@@ -179,9 +179,13 @@ function matchesSimpleGlob(path: string, pattern: string): boolean {
   }
 
   const regexSource = normalizedPattern
-    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*")
+    .split(/(\*\*)/)
+    .map((part) => {
+      if (part === "**") return ".*"
+
+      return part.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")
+    })
+    .join("")
 
   return new RegExp(`^${regexSource}$`).test(path)
 }

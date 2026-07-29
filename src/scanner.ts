@@ -1,13 +1,18 @@
+import { severityAtLeast } from "./severity.js"
 import {
   loadSqlGuardrailsConfig,
   type SqlFindingSeverity,
   type SqlGuardrailsConfig
 } from "./config.js"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { basename, join } from "node:path"
-import { existsSync, readFileSync, statSync } from "node:fs"
 
-export type ScanMode = "changed" | "all"
+export type ScanMode = "changed" | "staged" | "all"
+
+export function isScanMode(value: string): value is ScanMode {
+  return VALID_SCAN_MODES.has(value as ScanMode)
+}
 
 export interface SqlScannerLocation {
   line: number
@@ -133,19 +138,7 @@ const BASE_SQL_RULES: PatternRule[] = [
   }
 ]
 
-const SEVERITY_RANK: Record<SqlFindingSeverity, number> = {
-  info: 0,
-  low: 1,
-  medium: 2,
-  high: 3
-}
-
-function severityAtLeast(
-  severity: SqlFindingSeverity,
-  minimumSeverity: SqlFindingSeverity
-): boolean {
-  return SEVERITY_RANK[severity] >= SEVERITY_RANK[minimumSeverity]
-}
+export const VALID_SCAN_MODES = new Set(["changed", "staged", "all"])
 
 function getSqlRules(config: SqlGuardrailsConfig): PatternRule[] {
   const extraRules = config.extraQueryCallPatterns.map((queryCallPattern) => ({
@@ -236,6 +229,12 @@ function getAllFiles(root: string): string[] {
   const tracked = runGit(["ls-files"], root)
 
   return Array.from(new Set(tracked.split("\n").map(normalizeGitPath).filter(Boolean)))
+}
+
+function getStagedFiles(root: string): string[] {
+  const staged = runGit(["diff", "--name-only", "--cached"], root)
+
+  return Array.from(new Set(staged.split("\n").map(normalizeGitPath).filter(Boolean)))
 }
 
 function stripLineCommentNoise(line: string): string {
@@ -361,7 +360,12 @@ export async function scanSqlFiles(
   const config = loadSqlGuardrailsConfig(root)
   const rules = getSqlRules(config)
 
-  const files = mode === "all" ? getAllFiles(root) : getChangedFiles(root)
+  const files =
+    mode === "all"
+      ? getAllFiles(root)
+      : mode === "staged"
+        ? getStagedFiles(root)
+        : getChangedFiles(root)
 
   const candidates = files.filter((file) => shouldIncludeFile(file, config))
   const results: SqlScannerResult[] = []

@@ -82,7 +82,11 @@ function getRelevantDiff(root: string, mode: ScanMode, files: SqlScannerResult[]
   const paths = files.map((file) => file.path)
 
   if (paths.length === 0) {
-    return runGit(["diff"], root)
+    return mode === "staged" ? runGit(["diff", "--cached"], root) : runGit(["diff"], root)
+  }
+
+  if (mode === "staged") {
+    return runGit(["diff", "--cached", "--", ...paths], root)
   }
 
   const untrackedFiles = getUntrackedFiles(root)

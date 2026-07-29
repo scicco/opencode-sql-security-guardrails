@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { execFileSync, spawnSync } from "node:child_process"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
@@ -12,6 +12,22 @@ function createTempProject(): string {
   const root = mkdtempSync(join(tmpdir(), "sql-guardrails-init-"))
   tempDirs.push(root)
   return root
+}
+
+function runCliResult(
+  cwd: string,
+  args: string[]
+): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync("node", [cliPath, ...args], {
+    cwd,
+    encoding: "utf8"
+  })
+
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr
+  }
 }
 
 function runCli(cwd: string, args: string[] = []): string {
@@ -124,5 +140,77 @@ describe("opencode-sql-security-guardrails CLI", () => {
 
     expect(startMatches).toHaveLength(1)
     expect(endMatches).toHaveLength(1)
+  })
+  it("scan --staged fails when staged files contain high severity SQL findings", () => {
+    const root = createTempProject()
+
+    execFileSync("git", ["init"], { cwd: root, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: root,
+      stdio: "ignore"
+    })
+    execFileSync("git", ["config", "user.name", "Test User"], {
+      cwd: root,
+      stdio: "ignore"
+    })
+
+    const filePath = join(root, "unsafe.js")
+
+    writeFileSync(
+      filePath,
+      [
+        "async function test(db, userId) {",
+        "  return db.query(`SELECT * FROM users WHERE id = ${userId}`)",
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    )
+
+    execFileSync("git", ["add", "unsafe.js"], { cwd: root, stdio: "ignore" })
+
+    const result = runCliResult(root, ["scan", "--staged", "--fail-on", "high"])
+
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain("SQL security guardrail scan")
+    expect(result.stderr).toContain("SQL guardrail failed")
+    expect(result.stderr).toContain("unsafe.js:2")
+    expect(result.stderr).toContain("sql-template-interpolation")
+  })
+
+  it("scan --staged passes when staged SQL findings are below fail threshold", () => {
+    const root = createTempProject()
+
+    execFileSync("git", ["init"], { cwd: root, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: root,
+      stdio: "ignore"
+    })
+    execFileSync("git", ["config", "user.name", "Test User"], {
+      cwd: root,
+      stdio: "ignore"
+    })
+
+    const filePath = join(root, "safe.js")
+
+    writeFileSync(
+      filePath,
+      [
+        "async function test(db, userId) {",
+        '  return db.query("SELECT * FROM users WHERE id = $1", [userId])',
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    )
+
+    execFileSync("git", ["add", "safe.js"], { cwd: root, stdio: "ignore" })
+
+    const result = runCliResult(root, ["scan", "--staged", "--fail-on", "high"])
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("SQL security guardrail scan")
+    expect(result.stdout).toContain("No findings at or above severity 'high'")
+    expect(result.stderr).toBe("")
   })
 })

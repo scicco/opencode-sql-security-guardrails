@@ -10,7 +10,7 @@ export const SqlSecurityGuardrailsPlugin: Plugin = async () => {
           "Return a JSON list of changed or all project files that contain likely raw SQL queries or SQL execution calls.",
         args: {
           mode: tool.schema
-            .enum(["changed", "all"])
+            .enum(["changed", "staged", "all"])
             .default("changed")
             .describe("Scan changed files or all repository files")
         },
@@ -34,7 +34,7 @@ export const SqlSecurityGuardrailsPlugin: Plugin = async () => {
           "Build a SQL security review context containing scanner results, relevant git diff, and detected file contents.",
         args: {
           mode: tool.schema
-            .enum(["changed", "all"])
+            .enum(["changed", "staged", "all"])
             .default("changed")
             .describe("Build review context from changed files or all repository files")
         },

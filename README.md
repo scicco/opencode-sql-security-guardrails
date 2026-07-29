@@ -2,7 +2,7 @@
 
 OpenCode plugin and skill templates for SQL security guardrails.
 
-This package adds tools and project instructions that help OpenCode detect and review SQL-bearing code changes for:
+This package adds tools, CLI commands, and project instructions that help OpenCode detect and review SQL-bearing code changes for:
 
 - SQL injection;
 - unsafe dynamic identifiers;
@@ -13,7 +13,7 @@ This package adds tools and project instructions that help OpenCode detect and r
 The intended workflow is:
 
 1. run lint and tests;
-2. run the SQL scanner tool;
+2. run the SQL scanner tool or CLI command;
 3. if SQL-bearing files are detected, run the `sql-security-review` skill;
 4. block task completion if the review returns `SQL_SECURITY_REVIEW: KO`.
 
@@ -25,7 +25,7 @@ The plugin exposes these tools:
 
 #### `sql_raw_query_scanner`
 
-Scans changed or all project files and returns a JSON list of files that likely contain raw SQL, database query calls, SQL strings, or SQL-building patterns.
+Scans changed, staged, or all project files and returns a JSON list of files that likely contain raw SQL, database query calls, SQL strings, or SQL-building patterns.
 
 Example output:
 
@@ -64,6 +64,58 @@ Builds a review context containing:
 - instructions for the `sql-security-review` skill.
 
 Use this tool before invoking the review skill.
+
+### CLI command
+
+The package also exposes a CLI command:
+
+```bash
+opencode-sql-security-guardrails
+```
+
+Supported commands:
+
+```bash
+opencode-sql-security-guardrails init [options]
+opencode-sql-security-guardrails scan [options]
+opencode-sql-security-guardrails help
+opencode-sql-security-guardrails version
+```
+
+The `scan` command is intended for Git hooks, CI jobs, and local deterministic checks.
+
+Recommended pre-commit usage:
+
+```bash
+opencode-sql-security-guardrails scan --staged --fail-on high
+```
+
+While developing from a local checkout before publishing the package, you can run the compiled CLI directly:
+
+```bash
+node /absolute/path/to/opencode-sql-security-guardrails/dist/bin/init.js scan --staged --fail-on high
+```
+
+#### CLI scan options
+
+```text
+--changed          Scan staged, unstaged, and untracked files
+--staged           Scan only staged files
+--all              Scan all tracked files
+--mode=<mode>      Alternative mode syntax: changed, staged, all
+--fail-on <level>  Exit with code 1 when findings are at or above: info, low, medium, high
+--json             Print machine-readable JSON output
+```
+
+Examples:
+
+```bash
+opencode-sql-security-guardrails scan --staged --fail-on high
+opencode-sql-security-guardrails scan --changed --fail-on medium --json
+opencode-sql-security-guardrails scan --all --fail-on high
+```
+
+A scan exits with code `1` when blocking findings are detected at or above the configured `--fail-on` severity. This makes it suitable for pre-commit hooks.
 
 ### Skill template
 
@@ -116,11 +168,13 @@ npm link
 
 In the target project:
 
-````bash
+```bash
 npm link @scicco/opencode-sql-security-guardrails
 ```
 
 Then configure OpenCode.
+
+If `npm link` is not available or the package has not been published yet, use the local proxy plugin approach described below.
 
 ## Configure OpenCode
 
@@ -131,9 +185,9 @@ Add this to the target project's root `opencode.json`:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-sql-security-guardrails"]
+  "plugin": ["@scicco/opencode-sql-security-guardrails"]
 }
-````
+```
 
 Restart OpenCode after changing plugin configuration.
 
@@ -157,6 +211,8 @@ Then restart OpenCode.
 
 This proxy approach is useful while developing the plugin locally.
 
+Do not commit a proxy plugin that contains an absolute path to a local machine.
+
 ## Install the skill and AGENTS.md guardrail
 
 In the target project:
@@ -172,7 +228,7 @@ This creates or updates:
 AGENTS.md
 ```
 
-### Options
+### Init options
 
 Overwrite existing managed files/block:
 
@@ -234,6 +290,28 @@ When the result is `KO`, OpenCode should fix the findings and repeat:
 
 Do not mark the task complete while SQL security review is `KO`.
 
+## Recommended Git hook workflow
+
+The CLI `scan` command can be used in a pre-commit hook to block commits that contain high-severity SQL findings.
+
+Recommended command:
+
+```bash
+opencode-sql-security-guardrails scan --staged --fail-on high
+```
+
+For unpublished local plugin development:
+
+```bash
+node /absolute/path/to/opencode-sql-security-guardrails/dist/bin/init.js scan --staged --fail-on high
+```
+
+Recommended policy:
+
+- `high` findings block commits;
+- `medium` and `info` findings remain visible in scanner output but should not block commits by default;
+- semantic review remains the responsibility of the `sql-security-review` skill inside OpenCode.
+
 ## Scanner modes
 
 ### Changed files
@@ -248,7 +326,21 @@ Scans:
 - staged changes;
 - untracked files.
 
-This is the recommended mode during normal development.
+This is the recommended mode during normal OpenCode development.
+
+### Staged files
+
+```text
+mode=staged
+```
+
+Scans only files staged for commit:
+
+```bash
+git diff --cached --name-only
+```
+
+This is the recommended mode for pre-commit hooks.
 
 ### All tracked files
 
@@ -438,8 +530,9 @@ opencode-sql-security-guardrails/
   src/
     config.ts
     index.ts
-    scanner.ts
     review-context.ts
+    scanner.ts
+    severity.ts
   templates/
     AGENTS.sql-security.md
     skills/

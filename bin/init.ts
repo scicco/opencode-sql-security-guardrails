@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-
+import { isScanMode, scanSqlFiles, type ScanMode, type SqlScannerResult } from "../src/scanner.js"
+import type { SqlFindingSeverity } from "../src/config.js"
+import { isSqlFindingSeverity, severityAtLeast } from "../src/severity.js"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -13,9 +15,17 @@ interface InitOptions {
   updateAgents: boolean
 }
 
+interface ScanOptions {
+  cwd: string
+  mode: ScanMode
+  failOn: SqlFindingSeverity
+  json: boolean
+}
+
 interface ParsedCommand {
-  command: "init" | "help" | "version"
+  command: "init" | "scan" | "help" | "version"
   options: InitOptions
+  scanOptions?: ScanOptions
 }
 
 function parseArgs(argv: string[]): ParsedCommand {
@@ -44,6 +54,14 @@ function parseArgs(argv: string[]): ParsedCommand {
     }
   }
 
+  if (firstArg === "scan") {
+    return {
+      command: "scan",
+      options: defaultOptions([]),
+      scanOptions: parseScanOptions(rawArgs.slice(1))
+    }
+  }
+
   if (firstArg !== "init") {
     throw new Error(`Unknown command: ${firstArg}`)
   }
@@ -61,6 +79,79 @@ function defaultOptions(args: string[]): InitOptions {
     cwd: process.cwd(),
     force: argSet.has("--force"),
     updateAgents: !argSet.has("--no-agents")
+  }
+}
+
+function parseScanOptions(args: string[]): ScanOptions {
+  let mode: ScanMode = "changed"
+  let failOn: SqlFindingSeverity = "high"
+  let json = false
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+
+    if (arg === "--changed") {
+      mode = "changed"
+      continue
+    }
+
+    if (arg === "--staged") {
+      mode = "staged"
+      continue
+    }
+
+    if (arg === "--all") {
+      mode = "all"
+      continue
+    }
+
+    if (arg === "--json") {
+      json = true
+      continue
+    }
+
+    if (arg === "--fail-on") {
+      const value = args[index + 1]
+
+      if (!value || !isSqlFindingSeverity(value)) {
+        throw new Error(`Invalid --fail-on value: ${value ?? "<missing>"}`)
+      }
+
+      failOn = value
+      index += 1
+      continue
+    }
+
+    if (arg.startsWith("--fail-on=")) {
+      const value = arg.slice("--fail-on=".length)
+
+      if (!isSqlFindingSeverity(value)) {
+        throw new Error(`Invalid --fail-on value: ${value}`)
+      }
+
+      failOn = value
+      continue
+    }
+
+    if (arg.startsWith("--mode=")) {
+      const value = arg.slice("--mode=".length)
+
+      if (!isScanMode(value)) {
+        throw new Error(`Invalid --mode value: ${value}`)
+      }
+
+      mode = value
+      continue
+    }
+
+    throw new Error(`Unknown scan option: ${arg}`)
+  }
+
+  return {
+    cwd: process.cwd(),
+    mode,
+    failOn,
+    json
   }
 }
 
@@ -178,24 +269,37 @@ function printHelp(): void {
 
 Usage:
   opencode-sql-security-guardrails init [options]
+  opencode-sql-security-guardrails scan [options]
   opencode-sql-security-guardrails help
   opencode-sql-security-guardrails version
 
 Commands:
   init       Install the sql-security-review skill and AGENTS.md guardrail snippet
+  scan       Scan SQL-bearing files from the command line
   help       Show this help message
   version    Show package version
 
-Options:
+Init options:
   --force       Overwrite existing skill and managed AGENTS.md block
   --no-agents   Install the skill but do not create or update AGENTS.md
-  --help, -h    Show this help message
-  --version,-v  Show package version
+
+Scan options:
+  --changed          Scan staged, unstaged, and untracked files
+  --staged           Scan only staged files
+  --all              Scan all tracked files
+  --mode=<mode>      Alternative mode syntax: changed, staged, all
+  --fail-on <level>  Fail when findings are at or above: info, low, medium, high
+  --json             Print machine-readable JSON output
+
+Global options:
+  --help, -h     Show this help message
+  --version, -v  Show package version
 
 Examples:
   opencode-sql-security-guardrails init
   opencode-sql-security-guardrails init --force
-  opencode-sql-security-guardrails init --no-agents
+  opencode-sql-security-guardrails scan --staged --fail-on high
+  opencode-sql-security-guardrails scan --changed --fail-on medium --json
 `)
 }
 
@@ -237,7 +341,100 @@ function runInit(options: InitOptions): void {
   console.log("4. If SQL-bearing files are found, invoke the sql-security-review skill.")
 }
 
-function main(): void {
+function getBlockingFindings(
+  files: SqlScannerResult[],
+  failOn: SqlFindingSeverity
+): Array<{
+  path: string
+  line: number
+  kind: string
+  severity: SqlFindingSeverity
+  preview: string
+}> {
+  return files.flatMap((file) =>
+    file.locations
+      .filter((location) => severityAtLeast(location.severity, failOn))
+      .map((location) => ({
+        path: file.path,
+        line: location.line,
+        kind: location.kind,
+        severity: location.severity,
+        preview: location.preview
+      }))
+  )
+}
+
+async function runScan(options: ScanOptions): Promise<void> {
+  const files = await scanSqlFiles(options.mode, options.cwd)
+  const blockingFindings = getBlockingFindings(files, options.failOn)
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          mode: options.mode,
+          failOn: options.failOn,
+          count: files.length,
+          blockingCount: blockingFindings.length,
+          files,
+          blockingFindings
+        },
+        null,
+        2
+      )
+    )
+  } else {
+    printScanReport(options, files, blockingFindings)
+  }
+
+  if (blockingFindings.length > 0) {
+    process.exitCode = 1
+  }
+}
+
+function printScanReport(
+  options: ScanOptions,
+  files: SqlScannerResult[],
+  blockingFindings: ReturnType<typeof getBlockingFindings>
+): void {
+  console.log("SQL security guardrail scan")
+  console.log(`Mode: ${options.mode}`)
+  console.log(`Fail on: ${options.failOn}`)
+  console.log(`SQL-bearing files: ${files.length}`)
+  console.log(`Blocking findings: ${blockingFindings.length}`)
+  console.log("")
+
+  if (files.length === 0) {
+    console.log("No SQL-bearing files detected.")
+    return
+  }
+
+  if (blockingFindings.length === 0) {
+    console.log(`No findings at or above severity '${options.failOn}'.`)
+    return
+  }
+
+  console.error("SQL guardrail failed.")
+  console.error("")
+  console.error(`Findings at or above severity '${options.failOn}' were detected:`)
+  console.error("")
+
+  for (const finding of blockingFindings) {
+    console.error(`- ${finding.path}:${finding.line}`)
+    console.error(`  severity: ${finding.severity}`)
+    console.error(`  kind: ${finding.kind}`)
+    console.error(`  preview: ${finding.preview}`)
+    console.error("")
+  }
+
+  console.error("Recommended remediation:")
+  console.error("1. Run OpenCode from the repository root.")
+  console.error("2. Use sql_security_review_context with mode changed or staged.")
+  console.error("3. Invoke the sql-security-review skill using that context.")
+  console.error("4. Fix the finding or document why it is safe.")
+}
+
+async function main(): Promise<void> {
   try {
     const parsed = parseArgs(process.argv)
     const packageRoot = getPackageRoot()
@@ -254,6 +451,13 @@ function main(): void {
       case "init":
         runInit(parsed.options)
         return
+      case "scan":
+        if (!parsed.scanOptions) {
+          throw new Error("Missing scan options")
+        }
+
+        await runScan(parsed.scanOptions)
+        return
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -265,4 +469,4 @@ function main(): void {
   }
 }
 
-main()
+void main()

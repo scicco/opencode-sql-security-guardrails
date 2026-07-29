@@ -1,0 +1,52 @@
+{
+  "name": "opencode-sql-security-guardrails",
+  "version": "0.1.0",
+  "description": "OpenCode plugin and skill templates for SQL security guardrails.",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "bin": {
+    "opencode-sql-security-guardrails": "dist/bin/init.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/scanner.test.ts tests/review-context.test.ts",
+    "test:cli": "npm run build && vitest run tests/init-cli.test.ts",
+    "test:all": "npm run test:unit && npm run test:cli",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "sql",
+    "security",
+    "guardrails",
+    "sql-injection"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.18.9"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.8.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10"
+  }
+}

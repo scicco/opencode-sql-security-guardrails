@@ -1,0 +1,78 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.cjs
+
+# Build output
+dist/
+build/
+out/
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime / caches
+.cache/
+.tmp/
+tmp/
+temp/
+.eslintcache
+.prettier-cache
+
+# Package manager caches
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnpm-store/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# macOS / OS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows metadata
+Thumbs.db
+Desktop.ini
+
+# IDE / editor local state
+.idea/
+*.swp
+*.swo
+*~
+
+# VS Code: keep project settings, ignore local/private settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# OpenCode local/dev state
+# Keep plugin templates and source files in git; ignore runtime/cache-like files only.
+.opencode/.cache/
+.opencode/logs/
+.opencode/tmp/
+.opencode/node_modules/
+
+# Test scratch files used while developing the scanner
+tmp_sql_scan_test.js
+tmp_sql_scan_test.ts

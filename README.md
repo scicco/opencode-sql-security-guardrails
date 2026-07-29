@@ -116,8 +116,8 @@ npm link
 
 In the target project:
 
-```bash
-npm link opencode-sql-security-guardrails
+````bash
+npm link @scicco/opencode-sql-security-guardrails
 ```
 
 Then configure OpenCode.
@@ -133,7 +133,7 @@ Add this to the target project's root `opencode.json`:
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["opencode-sql-security-guardrails"]
 }
-```
+````
 
 Restart OpenCode after changing plugin configuration.
 
@@ -260,6 +260,91 @@ Scans all tracked source files in the repository.
 
 This is useful for baseline audits.
 
+## Project configuration
+
+Projects can optionally add:
+
+```text
+.sql-security-guardrails.json
+```
+
+If you want to start from the example configuration shipped with this repository, copy it with:
+
+```bash
+cp .sql-security-guardrails.example.json .sql-security-guardrails.json
+```
+
+Example:
+
+```json
+{
+  "ignoredPaths": ["fixtures/**", "testdata/**"],
+  "extraQueryCallPatterns": ["analyticsDb.query", "tenantDb.raw"],
+  "minimumSeverity": "info"
+}
+```
+
+### `ignoredPaths`
+
+Additional project-specific paths to ignore.
+
+Supports simple glob-like patterns:
+
+- `fixtures/**`
+- `testdata/*.js`
+- `generated`
+
+A pattern without `*` matches the exact path or anything below that directory. For example, `generated` matches both `generated` and `generated/file.js`.
+
+### `extraQueryCallPatterns`
+
+Additional query execution call names to detect.
+
+Example:
+
+```json
+{
+  "extraQueryCallPatterns": ["analyticsDb.query", "tenantDb.raw"]
+}
+```
+
+A pattern such as `analyticsDb.query` detects calls like:
+
+```js
+analyticsDb.query("SELECT * FROM events")
+```
+
+This is useful for project-specific database wrappers that are not covered by the default scanner rules.
+
+### `minimumSeverity`
+
+Minimum finding severity to include in scanner output.
+
+Allowed values:
+
+```text
+info
+low
+medium
+high
+```
+
+Default:
+
+```text
+info
+```
+
+For example, this configuration reports only high-severity scanner findings:
+
+```json
+{
+  "minimumSeverity": "high"
+}
+```
+
+Use this carefully. The scanner is a candidate detector, not the final security reviewer. Filtering out lower-severity findings can reduce noise, but it may also hide useful context from the `sql-security-review` skill.
+
 ## Detection behavior
 
 The scanner looks for patterns such as:
@@ -306,6 +391,12 @@ Run TypeScript check:
 npm run check
 ```
 
+Run tests:
+
+```bash
+npm run test:all
+```
+
 Build:
 
 ```bash
@@ -318,7 +409,9 @@ Full local verification:
 npm run format
 npm run lint
 npm run check
+npm run test:all
 npm run build
+npm pack --dry-run
 ```
 
 ## VS Code setup
@@ -343,6 +436,7 @@ opencode-sql-security-guardrails/
   bin/
     init.ts
   src/
+    config.ts
     index.ts
     scanner.ts
     review-context.ts
@@ -351,49 +445,16 @@ opencode-sql-security-guardrails/
     skills/
       sql-security-review/
         SKILL.md
+  tests/
+    config.test.ts
+    init-cli.test.ts
+    review-context.test.ts
+    scanner.test.ts
   package.json
   tsconfig.json
+  tsconfig.build.json
   eslint.config.js
   README.md
-```
-
-## Publishing later
-
-When ready to publish:
-
-1. ensure `package.json` has the desired package name;
-2. ensure `files` includes `dist`, `templates`, and `README.md`;
-3. run:
-
-```bash
-npm run format
-npm run lint
-npm run check
-npm run build
-```
-
-4. publish:
-
-```bash
-npm publish
-```
-
-Then users can install via OpenCode by adding the package to `opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-sql-security-guardrails"]
-}
-```
-
-For scoped packages:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@your-scope/opencode-sql-security-guardrails"]
-}
 ```
 
 ## License

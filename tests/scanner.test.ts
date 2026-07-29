@@ -37,6 +37,86 @@ afterEach(() => {
 })
 
 describe("scanSqlFiles", () => {
+  it("respects ignoredPaths from project config", async () => {
+    const root = createGitRepo()
+
+    writeProjectFile(
+      root,
+      ".sql-security-guardrails.json",
+      JSON.stringify(
+        {
+          ignoredPaths: ["fixtures/**"]
+        },
+        null,
+        2
+      )
+    )
+
+    writeProjectFile(
+      root,
+      "fixtures/unsafe.js",
+      "db.query(`SELECT * FROM users WHERE id = ${userId}`)\n"
+    )
+
+    const results = await scanSqlFiles("changed", root)
+
+    expect(results).toEqual([])
+  })
+
+  it("detects extra query call patterns from project config", async () => {
+    const root = createGitRepo()
+
+    writeProjectFile(
+      root,
+      ".sql-security-guardrails.json",
+      JSON.stringify(
+        {
+          extraQueryCallPatterns: ["analyticsDb.query"]
+        },
+        null,
+        2
+      )
+    )
+
+    writeProjectFile(
+      root,
+      "src/analytics.js",
+      "analyticsDb.query(`SELECT * FROM events WHERE user_id = ${userId}`)\n"
+    )
+
+    const results = await scanSqlFiles("changed", root)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].path).toBe("src/analytics.js")
+    expect(results[0].reasons).toContain("custom query execution call: analyticsDb.query")
+  })
+
+  it("filters findings below minimumSeverity", async () => {
+    const root = createGitRepo()
+
+    writeProjectFile(
+      root,
+      ".sql-security-guardrails.json",
+      JSON.stringify(
+        {
+          minimumSeverity: "high"
+        },
+        null,
+        2
+      )
+    )
+
+    writeProjectFile(
+      root,
+      "src/repository.js",
+      'db.query("SELECT * FROM users WHERE id = $1", [userId])\n'
+    )
+
+    const results = await scanSqlFiles("changed", root)
+
+    expect(results).toEqual([])
+  })
+
   it("detects untracked files with interpolated SQL template literals", async () => {
     const root = createGitRepo()
 

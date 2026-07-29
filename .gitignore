@@ -76,3 +76,7 @@ Desktop.ini
 # Test scratch files used while developing the scanner
 tmp_sql_scan_test.js
 tmp_sql_scan_test.ts
+
+# config file
+.sql-security-guardrails.json
+!.sql-security-guardrails.example.json

@@ -1,17 +1,26 @@
 {
-  "name": "opencode-sql-security-guardrails",
+  "name": "@scicco/opencode-sql-security-guardrails",
   "version": "0.1.0",
   "description": "OpenCode plugin and skill templates for SQL security guardrails.",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scicco/opencode-sql-security-guardrails.git"
+  },
+  "bugs": {
+    "url": "https://github.com/scicco/opencode-sql-security-guardrails/issues"
+  },
+  "homepage": "https://github.com/scicco/opencode-sql-security-guardrails#readme",
   "bin": {
     "opencode-sql-security-guardrails": "dist/bin/init.js"
   },
   "files": [
     "dist",
     "templates",
-    "README.md"
+    "README.md",
+    ".sql-security-guardrails.example.json"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -21,7 +30,7 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test": "vitest run",
-    "test:unit": "vitest run tests/scanner.test.ts tests/review-context.test.ts",
+    "test:unit": "vitest run tests/config.test.ts tests/scanner.test.ts tests/review-context.test.ts",
     "test:cli": "npm run build && vitest run tests/init-cli.test.ts",
     "test:all": "npm run test:unit && npm run test:cli",
     "test:watch": "vitest"

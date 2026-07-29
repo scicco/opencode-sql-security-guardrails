@@ -1,3 +1,8 @@
+import {
+  loadSqlGuardrailsConfig,
+  type SqlFindingSeverity,
+  type SqlGuardrailsConfig
+} from "./config.js"
 import { execFileSync } from "node:child_process"
 import { basename, join } from "node:path"
 import { existsSync, readFileSync, statSync } from "node:fs"
@@ -7,7 +12,7 @@ export type ScanMode = "changed" | "all"
 export interface SqlScannerLocation {
   line: number
   kind: string
-  severity: "info" | "low" | "medium" | "high"
+  severity: SqlFindingSeverity
   preview: string
 }
 
@@ -38,7 +43,7 @@ const IGNORED_PATH_PARTS = [
   ".cache"
 ]
 
-const SQL_RULES: PatternRule[] = [
+const BASE_SQL_RULES: PatternRule[] = [
   {
     kind: "sql-template-interpolation",
     reason: "SQL-like template literal contains interpolation",
@@ -128,6 +133,59 @@ const SQL_RULES: PatternRule[] = [
   }
 ]
 
+const SEVERITY_RANK: Record<SqlFindingSeverity, number> = {
+  info: 0,
+  low: 1,
+  medium: 2,
+  high: 3
+}
+
+function severityAtLeast(
+  severity: SqlFindingSeverity,
+  minimumSeverity: SqlFindingSeverity
+): boolean {
+  return SEVERITY_RANK[severity] >= SEVERITY_RANK[minimumSeverity]
+}
+
+function getSqlRules(config: SqlGuardrailsConfig): PatternRule[] {
+  const extraRules = config.extraQueryCallPatterns.map((queryCallPattern) => ({
+    kind: "extra-query-call",
+    reason: `custom query execution call: ${queryCallPattern}`,
+    pattern: new RegExp(`\\b${escapeRegExp(queryCallPattern)}\\s*\\(`, "i")
+  }))
+
+  return [...extraRules, ...BASE_SQL_RULES]
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function normalizePathForMatch(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\.\//, "")
+}
+
+function matchesIgnoredPath(path: string, ignoredPatterns: string[]): boolean {
+  const normalizedPath = normalizePathForMatch(path)
+
+  return ignoredPatterns.some((pattern) => matchesSimpleGlob(normalizedPath, pattern))
+}
+
+function matchesSimpleGlob(path: string, pattern: string): boolean {
+  const normalizedPattern = normalizePathForMatch(pattern)
+
+  if (!normalizedPattern.includes("*")) {
+    return path === normalizedPattern || path.startsWith(`${normalizedPattern}/`)
+  }
+
+  const regexSource = normalizedPattern
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, ".*")
+    .replace(/\*/g, "[^/]*")
+
+  return new RegExp(`^${regexSource}$`).test(path)
+}
+
 export function runGit(args: string[], cwd: string): string {
   try {
     return execFileSync("git", args, {
@@ -186,7 +244,7 @@ function stripLineCommentNoise(line: string): string {
   return line
 }
 
-function severityForKind(kind: string): "info" | "low" | "medium" | "high" {
+function severityForKind(kind: string): SqlFindingSeverity {
   switch (kind) {
     case "sql-template-interpolation":
     case "sql-string-concatenation":
@@ -209,13 +267,13 @@ function severityForKind(kind: string): "info" | "low" | "medium" | "high" {
   }
 }
 
-function classifyLine(line: string): Array<{ kind: string; reason: string }> {
+function classifyLine(line: string, rules: PatternRule[]): Array<{ kind: string; reason: string }> {
   const normalized = stripLineCommentNoise(line)
   if (!normalized.trim()) return []
 
   const matches: Array<{ kind: string; reason: string }> = []
 
-  for (const rule of SQL_RULES) {
+  for (const rule of rules) {
     if (rule.pattern.test(normalized)) {
       matches.push({
         kind: rule.kind,
@@ -227,13 +285,19 @@ function classifyLine(line: string): Array<{ kind: string; reason: string }> {
   return matches
 }
 
-function shouldIncludeFile(path: string): boolean {
+function shouldIncludeFile(path: string, config: SqlGuardrailsConfig): boolean {
   if (!isSourceFile(path)) return false
   if (isIgnoredPath(path)) return false
+  if (matchesIgnoredPath(path, config.ignoredPaths)) return false
   return true
 }
 
-function scanFile(root: string, relativePath: string): SqlScannerResult | null {
+function scanFile(
+  root: string,
+  relativePath: string,
+  config: SqlGuardrailsConfig,
+  rules: PatternRule[]
+): SqlScannerResult | null {
   const absolutePath = join(root, relativePath)
 
   if (!existsSync(absolutePath)) return null
@@ -256,15 +320,20 @@ function scanFile(root: string, relativePath: string): SqlScannerResult | null {
   const reasons = new Set<string>()
 
   lines.forEach((line, index) => {
-    const matches = classifyLine(line)
-
+    const matches = classifyLine(line, rules)
     for (const match of matches) {
+      const severity = severityForKind(match.kind)
+
+      if (!severityAtLeast(severity, config.minimumSeverity)) {
+        continue
+      }
+
       reasons.add(match.reason)
 
       locations.push({
         line: index + 1,
         kind: match.kind,
-        severity: severityForKind(match.kind),
+        severity,
         preview: line.trim().slice(0, 180)
       })
     }
@@ -285,14 +354,16 @@ export async function scanSqlFiles(
   cwd = process.cwd()
 ): Promise<SqlScannerResult[]> {
   const root = getGitRoot(cwd)
+  const config = loadSqlGuardrailsConfig(root)
+  const rules = getSqlRules(config)
 
   const files = mode === "all" ? getAllFiles(root) : getChangedFiles(root)
 
-  const candidates = files.filter(shouldIncludeFile)
+  const candidates = files.filter((file) => shouldIncludeFile(file, config))
   const results: SqlScannerResult[] = []
 
   for (const file of candidates) {
-    const result = scanFile(root, file)
+    const result = scanFile(root, file, config, rules)
     if (result) results.push(result)
   }
 

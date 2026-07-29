@@ -1,0 +1,5 @@
+{
+  "ignoredPaths": ["fixtures/**", "testdata/**"],
+  "extraQueryCallPatterns": [],
+  "minimumSeverity": "info"
+}

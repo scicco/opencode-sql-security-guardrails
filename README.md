@@ -202,9 +202,7 @@ If OpenCode does not resolve the linked package during development, create:
 with:
 
 ```js
-import SqlSecurityGuardrailsPlugin from "/absolute/path/to/opencode-sql-security-guardrails/dist/src/index.js"
-
-export { SqlSecurityGuardrailsPlugin }
+export { default } from "/absolute/path/to/opencode-sql-security-guardrails/dist/src/index.js"
 ```
 
 Then restart OpenCode.
